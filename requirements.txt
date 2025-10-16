@@ -1,0 +1,7 @@
+geopandas
+rasterio
+numpy
+scikit-learn
+scipy
+pyproj
+shapely
