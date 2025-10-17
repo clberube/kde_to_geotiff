@@ -49,7 +49,7 @@ conda install geopandas rasterio numpy scikit-learn scipy pyproj shapely
 ## Usage
 
 ```bash
-python kde_to_geotiff.py input_points.shp output_kde.tif     --kernel-size 250     --pixel-size 25
+python kde_to_geotiff.py input_points.shp output_kde.tif --kernel-size 250 --pixel-size 25
 ```
 
 ### Arguments
@@ -63,7 +63,7 @@ python kde_to_geotiff.py input_points.shp output_kde.tif     --kernel-size 250  
 | `--kernel` | optional | Kernel type: `gaussian`, `tophat`, `epanechnikov`, `exponential`, `linear`, `cosine` (default: `gaussian`) |
 | `--to-crs` | optional | EPSG code or PROJ string for reprojection (auto-UTM if omitted) |
 | `--clip-padding` | optional | Expand grid bounds by N × kernel_size (default: `1.0`) |
-
+| `--data-column` | optional | Name of a column used to filter points; only rows with non-missing values in that column are included in the KDE (default: `None`) |
 ---
 
 ## Examples
@@ -73,12 +73,17 @@ python kde_to_geotiff.py input_points.shp output_kde.tif     --kernel-size 250  
 python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30
 ```
 
-**2. Localized Epanechnikov kernel with Québec Lambert CRS**
+**2. Basic Gaussian KDE for Barium only**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 200 --pixel-size 20     --kernel epanechnikov --to-crs EPSG:32198
+python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30 --data-column "Ba_ppm"
 ```
 
-**3. Add padding to avoid edge effects**
+**3. Localized Epanechnikov kernel with Québec Lambert CRS**
+```bash
+python kde_to_geotiff.py samples.shp density.tif     --kernel-size 200 --pixel-size 20 --kernel epanechnikov --to-crs EPSG:32198
+```
+
+**4. Add padding to avoid edge effects**
 ```bash
 python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-size 25 --clip-padding 1.5
 ```

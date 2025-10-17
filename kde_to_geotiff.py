@@ -33,6 +33,12 @@ def parse_args():
         help="Grid pixel size (same units as the shapefile CRS; e.g., meters).",
     )
     p.add_argument(
+        "--data-column",
+        type=str,
+        default=None,
+        help="Name of a column to use for filtering points. Rows with missing values in this column are ignored.",
+    )
+    p.add_argument(
         "--to-crs",
         type=str,
         default=None,
@@ -68,7 +74,9 @@ def parse_args():
 
 
 def read_points(
-    shp_path: Path, to_crs: str | None
+    shp_path: Path,
+    to_crs: str | None,
+    data_column: str | None,
 ) -> tuple[np.ndarray, CRS, gpd.GeoDataFrame]:
     gdf = gpd.read_file(shp_path)
     if gdf.empty:
@@ -90,6 +98,27 @@ def read_points(
         if gdf.crs is None:
             raise ValueError("Input shapefile has no CRS. Provide --to-crs.")
         crs = CRS.from_user_input(gdf.crs)
+
+    # Filter by data column if provided
+    if data_column is not None:
+        if data_column not in gdf.columns:
+            raise SystemExit(
+                f"Error: column '{data_column}' not found in shapefile attributes."
+            )
+
+        # Drop rows with NaN, None, or empty string in that column
+        before_count = len(gdf)
+        gdf = gdf[gdf[data_column].notnull() & (gdf[data_column] != "")]
+        after_count = len(gdf)
+
+        if after_count == 0:
+            raise SystemExit(
+                f"Error: all rows have missing values in column '{data_column}'."
+            )
+        else:
+            print(
+                f"Filtered {before_count - after_count} rows with missing values in '{data_column}'."
+            )
 
     coords = np.vstack([(pt.x, pt.y) for pt in geom if isinstance(pt, Point)])
     if coords.size == 0:
@@ -163,7 +192,7 @@ def main():
         print("ERROR: --kernel-size and --pixel-size must be > 0.", file=sys.stderr)
         sys.exit(2)
 
-    points_xy, crs, gdf = read_points(args.shapefile, args.to_crs)
+    points_xy, crs, gdf = read_points(args.shapefile, args.to_crs, args.data_column)
     pad = args.clip_padding if args.clip_padding is not None else args.kernel_size
 
     # Bounds in current CRS
