@@ -62,7 +62,7 @@ python kde_to_geotiff.py input_points.shp output_kde.tif --kernel-size 250 --pix
 | `--pixel-size` | ✅ | Pixel size for the output grid (in same units) |
 | `--kernel` | optional | Kernel type: `gaussian`, `tophat`, `epanechnikov`, `exponential`, `linear`, `cosine` (default: `gaussian`) |
 | `--to-crs` | optional | EPSG code or PROJ string for reprojection (auto-UTM if omitted) |
-| `--clip-padding` | optional | Expand grid bounds by N × kernel_size (default: `1.0`) |
+| `--clip-to-hull` | optional | If set, clip the KDE to the convex hull of the input geometries (expanded by kernel_size). |
 | `--data-column` | optional | Name of a column used to filter points; only rows with non-missing values in that column are included in the KDE (default: `None`) |
 ---
 
@@ -75,7 +75,7 @@ python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-s
 
 **2. Basic Gaussian KDE for Barium only**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30 --data-column "Ba_ppm"
+python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30 --data-column "Ba_ppm" 
 ```
 
 **3. Localized Epanechnikov kernel with Québec Lambert CRS**
@@ -83,9 +83,9 @@ python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-s
 python kde_to_geotiff.py samples.shp density.tif     --kernel-size 200 --pixel-size 20 --kernel epanechnikov --to-crs EPSG:32198
 ```
 
-**4. Add padding to avoid edge effects**
+**4. Clip the raster to the convex hull after padding by kernel size**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-size 25 --clip-padding 1.5
+python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-size 25 --clip-to-hull
 ```
 
 ---

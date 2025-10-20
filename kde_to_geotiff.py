@@ -45,10 +45,9 @@ def parse_args():
         help="Optional target CRS (e.g., 'EPSG:3857'). If provided, data are reprojected before KDE.",
     )
     p.add_argument(
-        "--clip-padding",
-        type=float,
-        default=None,
-        help="Optional extra padding around bounds (defaults to kernel-size).",
+        "--clip-to-hull",
+        action="store_true",
+        help="If set, clip the KDE to the convex hull of the input geometries (expanded by kernel_size).",
     )
     p.add_argument(
         "--kernel",
@@ -148,7 +147,7 @@ def make_grid(
         maxy - pixel_size / 2.0, miny + pixel_size / 2.0, height
     )  # top to bottom
     Xc, Yc = np.meshgrid(xs, ys)
-    return Xc, Yc, xs, (minx, maxy, width, height)
+    return Xc, Yc, xs, ys, (minx, maxy, width, height)
 
 
 def kde_on_grid(
@@ -185,6 +184,66 @@ def mask_outside_kernel(
     return mask
 
 
+from shapely.geometry import Point
+
+
+def clip_outside_convex_hull(
+    density, xs, ys, gdf, buffer_distance=0.0, nodata_value=-9999.0
+):
+    """
+    Set density values to nodata outside the convex hull of geometries in a GeoDataFrame.
+
+    Parameters
+    ----------
+    density : np.ndarray
+        2D array of KDE values (height x width).
+    xs, ys : np.ndarray
+        1D arrays of X and Y coordinates corresponding to pixel centers.
+    gdf : geopandas.GeoDataFrame
+        Input geometries (any type).
+    buffer_distance : float, optional
+        Distance (in CRS units) to expand the hull before masking (default 0).
+    nodata_value : float, optional
+        Value to assign to masked pixels (default -9999.0).
+
+    Returns
+    -------
+    np.ndarray
+        The density array with values outside the hull set to nodata.
+    """
+    # Compute convex hull + buffer
+    try:
+        merged = gdf.union_all()
+    except AttributeError:  # for Shapely < 2.0
+        merged = gdf.unary_union
+
+    hull = merged.convex_hull.buffer(buffer_distance)
+
+    # Build meshgrid of pixel centers
+    X, Y = np.meshgrid(xs, ys)
+    points = np.column_stack([X.ravel(), Y.ravel()])
+
+    # Vectorized point-in-polygon test if Shapely 2.x is installed
+    try:
+        from shapely import contains
+
+        mask = contains(hull, points)
+        mask = mask.reshape(density.shape)
+    except Exception:
+        # Fallback (slower) loop for Shapely < 2.0
+        mask = np.zeros_like(density, dtype=bool)
+        for i in range(density.shape[0]):
+            for j in range(density.shape[1]):
+                if hull.contains(Point(X[i, j], Y[i, j])):
+                    mask[i, j] = True
+
+    # Apply mask
+    density_masked = density.copy()
+    density_masked[~mask] = nodata_value
+
+    return density_masked
+
+
 def main():
     args = parse_args()
 
@@ -193,30 +252,27 @@ def main():
         sys.exit(2)
 
     points_xy, crs, gdf = read_points(args.shapefile, args.to_crs, args.data_column)
-    pad = args.clip_padding if args.clip_padding is not None else args.kernel_size
 
     # Bounds in current CRS
     minx, miny, maxx, maxy = gdf.total_bounds
-    Xc, Yc, xs, (origin_minx, origin_maxy, width, height) = make_grid(
-        (minx, miny, maxx, maxy), pixel_size=args.pixel_size, pad=pad
+    Xc, Yc, xs, ys, (origin_minx, origin_maxy, width, height) = make_grid(
+        (minx, miny, maxx, maxy), pixel_size=args.pixel_size, pad=args.kernel_size
     )
 
     # KDE
-    dens = kde_on_grid(points_xy, args.kernel_size, args.kernel, Xc, Yc, args.atol)
-
-    # Mask when density is below 1%
-    threshold = 0.01 * np.nanmax(dens)
-    in_mask = dens >= threshold
-
-    # Alternative mask: transparent when farther than kernel-size from any input point
-    # in_mask = mask_outside_kernel(points_xy, Xc, Yc, args.kernel_size)
-
+    density = kde_on_grid(points_xy, args.kernel_size, args.kernel, Xc, Yc, args.atol)
     nodata_value = -9999.0
-    out = dens.copy()
-    out[~in_mask] = nodata_value
-    # alpha = (in_mask * 255).astype(
-    #     np.uint8
-    # )  # 255 opaque where within kernel range; 0 transparent outside
+
+    # Mask outside convex hull
+    if args.clip_to_hull:
+        density = clip_outside_convex_hull(
+            density,
+            xs,
+            ys,
+            gdf,
+            buffer_distance=args.kernel_size,
+            nodata_value=nodata_value,
+        )
 
     # GeoTIFF transform (top-left origin)
     transform = from_origin(origin_minx, origin_maxy, args.pixel_size, args.pixel_size)
@@ -239,9 +295,7 @@ def main():
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(args.output, "w", **profile) as dst:
-        dst.write(out.astype(np.float32), 1)
-        # Optional : Export an explicit alpha mask (0 transparent, 255 opaque)
-        # dst.write_mask(alpha)
+        dst.write(density.astype(np.float32), 1)
 
     print(f"Wrote: {args.output}")
 
