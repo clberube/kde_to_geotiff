@@ -99,15 +99,6 @@ python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-s
 
 ---
 
-## Choosing the masking distance
-
-If you’re using a Gaussian kernel (default), the influence never truly drops to zero.  
-We mask density values below 1% of the maximum density.  
-An alternative good practical cutoff is **3 × kernel_size**, which retains ~99.7% of the density mass.  
-For finite-support kernels (Epanechnikov, cosine, etc.), a cutoff of **1 × kernel_size** can be used.
-
----
-
 ## License
 
 This project is released under the MIT License.  
