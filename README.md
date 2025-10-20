@@ -2,7 +2,7 @@
 
 Compute a spatial kernel density estimation (KDE) from point shapefiles and export it as a GeoTIFF.
 
-This command-line tool reads a shapefile containing point geometries, computes a kernel density estimate (KDE) over a regular grid, and saves the result as a single-band GeoTIFF with transparent pixels outside a chosen distance.  
+This command-line tool reads a shapefile containing point geometries, computes a KDE over a regular grid, and saves the result as a single-band GeoTIFF with transparent pixels outside a chosen distance.  
 It is ideal for creating density maps of sampling sites, mineral occurrences, or other spatial point datasets.
 
 ---
