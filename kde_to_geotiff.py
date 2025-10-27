@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import time
 import sys
 from pathlib import Path
 
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point
-from sklearn.neighbors import KernelDensity
+from tqdm import tqdm
+
+# from sklearn.neighbors import KernelDensity
 import rasterio
 from rasterio.transform import from_origin
 from rasterio.crs import CRS
-from scipy.spatial import cKDTree
+
+# from scipy.spatial import cKDTree
+from scipy.stats import gaussian_kde
 
 
 def parse_args():
@@ -23,8 +28,8 @@ def parse_args():
     p.add_argument(
         "--kernel-size",
         type=float,
-        required=True,
-        help="Kernel bandwidth (same units as the shapefile CRS; e.g., meters).",
+        default=0.1,
+        help="Kernel bandwidth as a fraction of Scott's rule bandwidth (Default: 0.1)).",
     )
     p.add_argument(
         "--pixel-size",
@@ -49,20 +54,20 @@ def parse_args():
         action="store_true",
         help="If set, clip the KDE to the convex hull of the input geometries (expanded by kernel_size).",
     )
-    p.add_argument(
-        "--kernel",
-        type=str,
-        default="gaussian",
-        choices=[
-            "gaussian",
-            "tophat",
-            "epanechnikov",
-            "exponential",
-            "linear",
-            "cosine",
-        ],
-        help="Kernel type for KDE (sklearn). Default: gaussian.",
-    )
+    # p.add_argument(
+    #     "--kernel",
+    #     type=str,
+    #     default="gaussian",
+    #     choices=[
+    #         "gaussian",
+    #         "tophat",
+    #         "epanechnikov",
+    #         "exponential",
+    #         "linear",
+    #         "cosine",
+    #     ],
+    #     help="Kernel type for KDE (sklearn). Default: gaussian.",
+    # )
     p.add_argument(
         "--atol",
         type=float,
@@ -150,41 +155,68 @@ def make_grid(
     return Xc, Yc, xs, ys, (minx, maxy, width, height)
 
 
+def evaluate_kde_batched(kde, positions, batch_size=1000, show_progress=True):
+    """Evaluate scipy.stats.gaussian_kde in batches to reduce memory use."""
+    n = positions.shape[1]  # positions is (2, N)
+    results = np.empty(n, dtype=np.float64)
+    batches = range(0, n, batch_size)
+
+    iterator = tqdm(batches, disable=not show_progress)
+    for start in iterator:
+        stop = min(start + batch_size, n)
+        results[start:stop] = kde.logpdf(positions[:, start:stop])
+    return results
+
+
 def kde_on_grid(
     points_xy: np.ndarray,
     bandwidth: float,
-    kernel: str,
     Xc: np.ndarray,
     Yc: np.ndarray,
     atol: float,
 ) -> np.ndarray:
-    # sklearn expects shape (n_samples, n_features)
-    kde = KernelDensity(bandwidth=bandwidth, kernel=kernel)
-    kde.fit(points_xy)
 
-    # Evaluate at grid centers
-    grid_pts = np.column_stack([Xc.ravel(), Yc.ravel()])
-    log_density = kde.score_samples(grid_pts)  # log p(x)
+    values = np.vstack([points_xy[:, 0], points_xy[:, 1]])
+    print("Fitting KDE...")
+    kde = gaussian_kde(values, bw_method=bandwidth)
+    print("Done\n")
+
+    grid_pts = np.vstack([Xc.ravel().astype(np.float32), Yc.ravel().astype(np.float32)])
+    print("Evaluating KDE...")
+    # log_density = kde.logpdf(grid_pts)
+    log_density = evaluate_kde_batched(kde, grid_pts)
+    print("Done\n")
+
     density = np.exp(
         log_density - log_density.max()
     )  # scale to [0,1] range for numerical stability
     density = density + atol
-    return density.reshape(Xc.shape)
+    return density.reshape(Xc.shape).astype(np.float32)
+
+    # # sklearn expects shape (n_samples, n_features)
+    # kde = KernelDensity(bandwidth=bandwidth, kernel=kernel)
+    # kde.fit(points_xy)
+
+    # # Evaluate at grid centers
+    # grid_pts = np.column_stack([Xc.ravel(), Yc.ravel()])
+    # log_density = kde.score_samples(grid_pts)  # log p(x)
+    # density = np.exp(
+    #     log_density - log_density.max()
+    # )  # scale to [0,1] range for numerical stability
+    # density = density + atol
+    # return density.reshape(Xc.shape)
 
 
-def mask_outside_kernel(
-    points_xy: np.ndarray, Xc: np.ndarray, Yc: np.ndarray, kernel_size: float
-) -> np.ndarray:
-    # Build KDTree for nearest neighbor distances
-    tree = cKDTree(points_xy)
-    grid_pts = np.column_stack([Xc.ravel(), Yc.ravel()])
-    dists, _ = tree.query(grid_pts, k=1)
-    dists = dists.reshape(Xc.shape)
-    mask = (dists <= 3 * kernel_size).astype(bool)  # 1 inside, 0 outside
-    return mask
-
-
-from shapely.geometry import Point
+# def mask_outside_kernel(
+#     points_xy: np.ndarray, Xc: np.ndarray, Yc: np.ndarray, kernel_size: float
+# ) -> np.ndarray:
+#     # Build KDTree for nearest neighbor distances
+#     tree = cKDTree(points_xy)
+#     grid_pts = np.column_stack([Xc.ravel(), Yc.ravel()])
+#     dists, _ = tree.query(grid_pts, k=1)
+#     dists = dists.reshape(Xc.shape)
+#     mask = (dists <= 3 * kernel_size).astype(bool)  # 1 inside, 0 outside
+#     return mask
 
 
 def clip_outside_convex_hull(
@@ -251,20 +283,23 @@ def main():
         print("ERROR: --kernel-size and --pixel-size must be > 0.", file=sys.stderr)
         sys.exit(2)
 
+    print("Loading shapefile...")
     points_xy, crs, gdf = read_points(args.shapefile, args.to_crs, args.data_column)
+    print("Done\n")
 
     # Bounds in current CRS
     minx, miny, maxx, maxy = gdf.total_bounds
     Xc, Yc, xs, ys, (origin_minx, origin_maxy, width, height) = make_grid(
-        (minx, miny, maxx, maxy), pixel_size=args.pixel_size, pad=args.kernel_size
+        (minx, miny, maxx, maxy), pixel_size=args.pixel_size, pad=0.0
     )
 
     # KDE
-    density = kde_on_grid(points_xy, args.kernel_size, args.kernel, Xc, Yc, args.atol)
+    density = kde_on_grid(points_xy, args.kernel_size, Xc, Yc, args.atol)
     nodata_value = -9999.0
 
     # Mask outside convex hull
     if args.clip_to_hull:
+        print("Clipping shapefile...")
         density = clip_outside_convex_hull(
             density,
             xs,
@@ -273,6 +308,7 @@ def main():
             buffer_distance=args.kernel_size,
             nodata_value=nodata_value,
         )
+        print("Done \n")
 
     # GeoTIFF transform (top-left origin)
     transform = from_origin(origin_minx, origin_maxy, args.pixel_size, args.pixel_size)
@@ -297,8 +333,10 @@ def main():
     with rasterio.open(args.output, "w", **profile) as dst:
         dst.write(density.astype(np.float32), 1)
 
-    print(f"Wrote: {args.output}")
+    print(f"Wrote: {args.output}\n")
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    print(f"Runtime: {(time.time() - start_time):.2f} seconds\n")

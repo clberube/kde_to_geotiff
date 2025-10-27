@@ -11,7 +11,7 @@ It is ideal for creating density maps of sampling sites, mineral occurrences, or
 
 - Reads any shapefile with point, line, or polygon geometries  
 - Automatically projects geographic data to an appropriate UTM CRS  
-- Supports multiple kernel functions (Gaussian, Epanechnikov, tophat, etc.)  
+- Uses a Gaussian kernel  
 - Exports a GeoTIFF with nodata transparency (no `.msk` sidecar files)  
 - User-defined bandwidth (`--kernel-size`) and grid resolution (`--pixel-size`)  
 - Optional convex-hull clipping to limit density to the study area  
@@ -49,7 +49,7 @@ conda install geopandas rasterio numpy scikit-learn scipy pyproj shapely
 ## Usage
 
 ```bash
-python kde_to_geotiff.py input_points.shp output_kde.tif --kernel-size 250 --pixel-size 25
+python kde_to_geotiff.py input_points.shp output_kde.tif --pixel-size 25 --kernel-size 0.1 
 ```
 
 ### Arguments
@@ -58,9 +58,8 @@ python kde_to_geotiff.py input_points.shp output_kde.tif --kernel-size 250 --pix
 |-----------|-----------|-------------|
 | `input_shapefile` | ✅ | Path to the input shapefile (points preferred) |
 | `output_geotiff` | ✅ | Path to the output GeoTIFF |
-| `--kernel-size` | ✅ | KDE bandwidth in CRS units (e.g., meters) |
 | `--pixel-size` | ✅ | Pixel size for the output grid (in same units) |
-| `--kernel` | optional | Kernel type: `gaussian`, `tophat`, `epanechnikov`, `exponential`, `linear`, `cosine` (default: `gaussian`) |
+| `--kernel-size` | optional | KDE bandwidth as a fraction of Scott's rule (default: 0.1) |
 | `--to-crs` | optional | EPSG code or PROJ string for reprojection (auto-UTM if omitted) |
 | `--clip-to-hull` | optional | If set, clip the KDE to the convex hull of the input geometries (expanded by kernel_size). |
 | `--data-column` | optional | Name of a column used to filter points; only rows with non-missing values in that column are included in the KDE (default: `None`) |
@@ -70,22 +69,22 @@ python kde_to_geotiff.py input_points.shp output_kde.tif --kernel-size 250 --pix
 
 **1. Basic Gaussian KDE**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30
+python kde_to_geotiff.py samples.shp density.tif --pixel-size 30
 ```
 
 **2. Basic Gaussian KDE for Barium only**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 300 --pixel-size 30 --data-column "Ba_ppm" 
+python kde_to_geotiff.py samples.shp density.tif --pixel-size 30 --data-column "Ba_ppm" 
 ```
 
-**3. Localized Epanechnikov kernel with Québec Lambert CRS**
+**3. Custom kernel size and reprojection to Québec Lambert CRS**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 200 --pixel-size 20 --kernel epanechnikov --to-crs EPSG:32198
+python kde_to_geotiff.py samples.shp density.tif --kernel-size 0.3 --pixel-size 20 --to-crs EPSG:32198
 ```
 
-**4. Clip the raster to the convex hull after padding by kernel size**
+**4. Clip the raster to the convex hull**
 ```bash
-python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-size 25 --clip-to-hull
+python kde_to_geotiff.py samples.shp density.tif --pixel-size 25 --clip-to-hull
 ```
 
 ---
@@ -95,7 +94,7 @@ python kde_to_geotiff.py samples.shp density.tif     --kernel-size 250 --pixel-s
 - Single-band GeoTIFF (`float32`)
 - CRS automatically set from input or auto-UTM projection  
 - `nodata = -9999` pixels are transparent in QGIS or any GIS  
-- Pixel values represent the KDE probability density (not normalized counts)
+- Pixel values represent the min-max scaled [0, 1] KDE probability density
 
 ---
 
