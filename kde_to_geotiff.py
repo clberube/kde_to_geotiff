@@ -67,21 +67,16 @@ def parse_args():
         default=None,
         help="List of horizon labels to keep (e.g., A, B, C). If None, all samples are kept.",
     )
-
-    # p.add_argument(
-    #     "--kernel",
-    #     type=str,
-    #     default="gaussian",
-    #     choices=[
-    #         "gaussian",
-    #         "tophat",
-    #         "epanechnikov",
-    #         "exponential",
-    #         "linear",
-    #         "cosine",
-    #     ],
-    #     help="Kernel type for KDE (sklearn). Default: gaussian.",
-    # )
+    p.add_argument(
+        "--remove-negative",
+        action="store_true",
+        help="If set, remove rows where the value in --data-column is negative (<0).",
+    )
+    p.add_argument(
+        "--remove-positive",
+        action="store_true",
+        help="If set, remove rows where the value in --data-column is positive (>0).",
+    )
     p.add_argument(
         "--atol",
         type=float,
@@ -97,6 +92,8 @@ def read_points(
     data_column: str | None,
     horizon_column: str | None,
     horizon_keep: list[str] | None,
+    remove_negative: bool,
+    remove_positive: bool,
 ) -> tuple[np.ndarray, CRS, gpd.GeoDataFrame]:
 
     gdf = gpd.read_file(shp_path)
@@ -139,6 +136,29 @@ def read_points(
         else:
             print(
                 f"Filtered {before_count - after_count} rows with missing values in '{data_column}'."
+            )
+
+    # Remove negative or positive values if requested
+    if data_column is not None:
+        col = gdf[data_column]
+
+        if remove_negative:
+            before = len(gdf)
+            gdf = gdf[col >= 0]
+            print(
+                f"Removed {before - len(gdf)} rows with negative values in '{data_column}'."
+            )
+
+        if remove_positive:
+            before = len(gdf)
+            gdf = gdf[col <= 0]
+            print(
+                f"Removed {before - len(gdf)} rows with positive values in '{data_column}'."
+            )
+
+        if len(gdf) == 0:
+            raise SystemExit(
+                f"Error: No rows remain after applying value filtering (--remove-negative / --remove-positive)."
             )
 
     # Filter by horizon column if provided
@@ -324,6 +344,8 @@ def main():
         args.data_column,
         args.horizon_column,
         args.horizon_keep,
+        args.remove_negative,
+        args.remove_positive,
     )
     print("Done\n")
 

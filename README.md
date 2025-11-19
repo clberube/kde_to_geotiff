@@ -71,6 +71,9 @@ python kde_to_geotiff.py input_points.shp output_kde.tif --pixel-size 25 --kerne
 | `--data-column` | optional | Name of a column used to filter points; only rows with non-missing values in that column are included in the KDE (default: `None`) |
 | `--horizon-column` | optional | Name of a column used to filter samples based on soil horizon (e.g., `"HORIZON"`). |
 | `--horizon-keep`   | required only if `--horizon-column` is provided | One or more horizon labels to keep (e.g., `A`, `B`, or `A B`). Samples belonging to other horizons are discarded. |
+| `--remove-negative` | optional | Remove rows where the value in `--data-column` is negative (`< 0`). |
+| `--remove-positive` | optional | Remove rows where the value in `--data-column` is positive (`> 0`). |
+
 
 ---
 
@@ -100,16 +103,24 @@ python kde_to_geotiff.py samples.shp density.tif --pixel-size 25 --clip-to-hull
 
 **Keep only samples from horizon A:**
 ```bash
-python kde_to_geotiff.py samples.shp density_A.tif \
-    --pixel-size 20 \
-    --horizon-column HORIZON --horizon-keep A
+python kde_to_geotiff.py samples.shp density_A.tif --pixel-size 20 --horizon-column "HORIZON" --horizon-keep A
 ```
 
 **Keep horizona A and B:**
 ```bash
-python kde_to_geotiff.py samples.shp density_AB.tif \
-    --pixel-size 20 \
-    --horizon-column HORIZON --horizon-keep A B
+python kde_to_geotiff.py samples.shp density_AB.tif --pixel-size 20 --horizon-column "HORIZON" --horizon-keep A B
+```
+
+### 6. Remove negative or positive values
+
+**Remove negative values (keep only ≥ 0):**
+```bash
+python kde_to_geotiff.py samples.shp density_pos.tif --pixel-size 25 --data-column Ba_ppm --remove-negative
+```
+
+**Remove positive values (keep only ≤ 0):**
+```bash
+python kde_to_geotiff.py samples.shp density_neg.tif --pixel-size 25 --data-column Ba_ppm --remove-positive
 ```
 
 ---
