@@ -54,6 +54,20 @@ def parse_args():
         action="store_true",
         help="If set, clip the KDE to the convex hull of the input geometries (expanded by kernel_size).",
     )
+    p.add_argument(
+        "--horizon-column",
+        type=str,
+        default=None,
+        help="Name of the column indicating soil horizons (e.g., 'HORIZON').",
+    )
+    p.add_argument(
+        "--horizon-keep",
+        type=str,
+        nargs="+",
+        default=None,
+        help="List of horizon labels to keep (e.g., A, B, C). If None, all samples are kept.",
+    )
+
     # p.add_argument(
     #     "--kernel",
     #     type=str,
@@ -81,7 +95,10 @@ def read_points(
     shp_path: Path,
     to_crs: str | None,
     data_column: str | None,
+    horizon_column: str | None,
+    horizon_keep: list[str] | None,
 ) -> tuple[np.ndarray, CRS, gpd.GeoDataFrame]:
+
     gdf = gpd.read_file(shp_path)
     if gdf.empty:
         raise ValueError("The shapefile contains no features.")
@@ -122,6 +139,23 @@ def read_points(
         else:
             print(
                 f"Filtered {before_count - after_count} rows with missing values in '{data_column}'."
+            )
+
+    # Filter by horizon column if provided
+    if horizon_column is not None and horizon_keep is not None:
+        if horizon_column not in gdf.columns:
+            raise SystemExit(
+                f"Error: column '{horizon_column}' not found in shapefile attributes."
+            )
+        before_count = len(gdf)
+        gdf = gdf[gdf[horizon_column].isin(horizon_keep)]
+        after_count = len(gdf)
+        print(
+            f"Filtered {before_count - after_count} rows not in horizons {horizon_keep}."
+        )
+        if after_count == 0:
+            raise SystemExit(
+                f"Error: no rows remain after filtering horizons {horizon_keep}."
             )
 
     coords = np.vstack([(pt.x, pt.y) for pt in geom if isinstance(pt, Point)])
@@ -284,7 +318,13 @@ def main():
         sys.exit(2)
 
     print("Loading shapefile...")
-    points_xy, crs, gdf = read_points(args.shapefile, args.to_crs, args.data_column)
+    points_xy, crs, gdf = read_points(
+        args.shapefile,
+        args.to_crs,
+        args.data_column,
+        args.horizon_column,
+        args.horizon_keep,
+    )
     print("Done\n")
 
     # Bounds in current CRS
