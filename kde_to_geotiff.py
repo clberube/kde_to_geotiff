@@ -151,7 +151,7 @@ def read_points(
 
         if remove_positive:
             before = len(gdf)
-            gdf = gdf[col <= 0]
+            gdf = gdf[col < 0]
             print(
                 f"Removed {before - len(gdf)} rows with positive values in '{data_column}'."
             )
