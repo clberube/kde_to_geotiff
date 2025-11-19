@@ -79,22 +79,22 @@ python kde_to_geotiff.py input_points.shp output_kde.tif --pixel-size 25 --kerne
 
 ## Examples
 
-**1. Basic Gaussian KDE**
+### 1. Basic Gaussian KDE
 ```bash
 python kde_to_geotiff.py samples.shp density.tif --pixel-size 30
 ```
 
-**2. Basic Gaussian KDE for Barium only**
+### 2. Basic Gaussian KDE for Barium only
 ```bash
 python kde_to_geotiff.py samples.shp density.tif --pixel-size 30 --data-column "Ba_ppm" 
 ```
 
-**3. Custom kernel size and reprojection to Québec Lambert CRS**
+### 3. Custom kernel size and reprojection to Québec Lambert CRS
 ```bash
 python kde_to_geotiff.py samples.shp density.tif --kernel-size 0.3 --pixel-size 20 --to-crs EPSG:32198
 ```
 
-**4. Clip the raster to the convex hull**
+### 4. Clip the raster to the convex hull
 ```bash
 python kde_to_geotiff.py samples.shp density.tif --pixel-size 25 --clip-to-hull
 ```
@@ -106,7 +106,7 @@ python kde_to_geotiff.py samples.shp density.tif --pixel-size 25 --clip-to-hull
 python kde_to_geotiff.py samples.shp density_A.tif --pixel-size 20 --horizon-column "HORIZON" --horizon-keep A
 ```
 
-**Keep horizona A and B:**
+**Keep horizons A and B:**
 ```bash
 python kde_to_geotiff.py samples.shp density_AB.tif --pixel-size 20 --horizon-column "HORIZON" --horizon-keep A B
 ```
